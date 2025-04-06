@@ -9,9 +9,10 @@ getXEUL <- function(mdl, ...) {
   #   CoefficientNames (a character vector),
   #   and optionally Link (with an element $Inverse)
   predictors <- list(...)
-  d <- length(mdl$Coefficients$Estimate)
+  tryCatch(b <- fixef(mdl), error = function(e) b <- coef(mdl))
+  d <- length(b)
   dIn <- length(predictors)
-  coefName <- names(coef(mdl))
+  coefName <- names(b)
   numSimple <- sum(!grepl(":", coefName))
   if ((dIn < d) && (dIn != numSimple)) {
     stop("You must provide either all the model terms or only the simple effects.")
@@ -34,20 +35,15 @@ getXEUL <- function(mdl, ...) {
   xTermStruct <- getXtermStruct(coefName)
   X <- addXterms(X, xTermStruct)
   
-  b <- mdl$Coefficients$Estimate
-  C <- mdl$CoefficientCovariance
-  df <- mdl$DFE
+  C <- vcov(mdl)
+  df <- df.residual(mdl)
   est <- X %*% b
   se <- sqrt(rowSums((X %*% C) * X))
   tval_low <- qt(0.025, df)
   tval_upp <- qt(0.975, df)
   Ci95 <- cbind(est + se * tval_low, est + se * tval_upp)
   
-  if (!is.null(mdl$Link)) {
-    invLink <- mdl$Link$Inverse
-  } else {
-    invLink <- function(x) x
-  }
+  tryCatch(invLink <- mdl@resp$family$linkinv, error = function(e) invLink <- function(x) x)
   est <- invLink(est)
   Ci95 <- invLink(Ci95)
   

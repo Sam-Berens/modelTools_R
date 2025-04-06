@@ -6,7 +6,8 @@ runExample <- function() {
   model_and_factors <- getModel()
   mdl <- model_and_factors$mdl
   factorStruct <- model_and_factors$factorStruct
-  coefName <- mdl$CoefficientNames
+  tryCatch(b <- fixef(mdl), error = function(e) b <- coef(mdl))
+  coefName <- names(b)
   
   # Compute ANOVA contrast vectors and condition weights.
   treatRes <- getTreatWeights(coefName, factorStruct)
@@ -38,7 +39,7 @@ runExample <- function() {
   
   # Create the plot.
   plot(domain, est, type = "l", lwd = 2, col = "black",
-       xlab = "Complexity", ylab = "y", ylim = c(-1, 1))
+       xlab = "Complexity", ylab = "y", ylim = c(0, 6))
   lines(domain, low, lwd = 2, col = "red")
   lines(domain, upp, lwd = 2, col = "blue")
   legend("topright", legend = c("est", "low", "upp"),
@@ -55,8 +56,10 @@ runExample <- function() {
 
 # Helper: getModel (used by runExample)
 getModel <- function() {
+  library(lme4)
+  library(optimx)
   # Define the model formula.
-  formula <- y ~ Session * ActiveDrug * (Complex + Complexity)
+  formula <- y ~ Session * ActiveDrug * (Complex + Complexity) + (1|SubjectId)
   factorStruct <- list(
     list(name = "Session", coding = "bin", coefs = c(2, 3)),
     list(name = "Treatment", coding = "bin", coefs = 4),
@@ -79,21 +82,26 @@ getModel <- function() {
   nanzscore <- function(v) (v - mean(v, na.rm = TRUE)) / sd(v, na.rm = TRUE)
   Complexity <- nanzscore(Complexity)
   Complexity[is.na(Complexity)] <- 0
-  y <- rnorm(n)
+  SubjectId <- kronecker(1:12, rep(1, 12^2))
+  SubjectId <- factor(SubjectId)
+  y <- rgamma(n, 3, 1)
   DataTable <- data.frame(Session = Session_cat,
                           Session01 = Session01,
                           Session02 = Session02,
                           ActiveDrug = ActiveDrug,
                           Complex = Complex,
                           Complexity = Complexity,
+                          SubjectId = SubjectId,
                           y = y)
-  mdl <- lm(formula, data = DataTable)
-  # Add additional fields to mimic the MATLAB model structure.
-  mdl$CoefficientNames <- names(coef(mdl))
-  mdl$Coefficients <- data.frame(Estimate = coef(mdl))
-  mdl$CoefficientCovariance <- vcov(mdl)
-  mdl$DFE <- df.residual(mdl)
-  mdl$Link <- NULL  # or provide a list with an Inverse function if needed
+  mdl <- glmer(
+    y ~ Session * ActiveDrug * (Complex + Complexity) + (1|SubjectId),
+    data = DataTable,
+    family = Gamma(link = "log"),
+    control = glmerControl(
+      optimizer = "optimx",
+      optCtrl = list(method = "nlminb")  # or "BFGS", "L-BFGS-B", etc.
+    )
+  )
   return(list(mdl = mdl, factorStruct = factorStruct))
 }
 

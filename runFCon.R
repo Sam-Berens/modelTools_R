@@ -1,11 +1,11 @@
 #############################
 # runFCon.R
 #############################
-runFCon <- function(H, glme) {
-  b <- glme$Coefficients$Estimate
-  C <- glme$CoefficientCovariance
+runFCon <- function(H, mdl) {
+  tryCatch(b <- fixef(mdl), error = function(e) b <- coef(mdl))
+  C <- vcov(mdl)
   df1 <- qr(H)$rank
-  df2 <- glme$DFE
+  df2 <- df.residual(mdl)
   Hb <- as.vector(H %*% b)
   HCHt <- H %*% C %*% t(H)
   fStat <- as.numeric((t(Hb) %*% solve(HCHt) %*% Hb) / df1)
